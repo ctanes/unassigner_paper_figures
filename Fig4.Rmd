@@ -1,0 +1,234 @@
+---
+title: "Figure 4 work"
+author: "PennCHOP Microbiome Program"
+date: \today
+output: 
+    pdf_document:
+      toc: true
+---
+
+```{r knitr setup, echo=FALSE}
+library(knitr)
+opts_chunk$set(
+  tidy=FALSE,
+  cache=FALSE,
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  dpi=100,
+  fig.width=8,
+  fig.height=6,
+  fig.align = "center"
+  )
+```
+
+```{r R packages, message=FALSE, warning=F}
+library(tidyverse)
+library(RColorBrewer)
+library(viridis)
+library(ggbeeswarm)
+library(wesanderson)
+library(pander)
+library(kableExtra)
+library(taxonomizr)
+```
+
+
+```{r eval=T}
+taxonomizr_db <- "/Users/tanesc/Documents/DBs/taxonomizr/20211229_taxonomizr/accessionTaxa.sql"
+```
+
+```{r}
+## read in full length alignment results
+
+### AJ288899 (extra) and MN602556 (missin) have messed up annotations
+adf_LTP <- read.delim("/Users/tanesc/Documents/DBs/LTP/LTP_09_2021/LTP_09_2021.csv", header=F, stringsAsFactors = F) %>%
+  separate(V4, into=c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep=";") %>%
+  select(id = V1, V3, Kingdom, Phylum, Class, Order, Family, Genus, Species=V2) 
+
+database_counts_LTP <- adf_LTP %>%
+  group_by(Phylum) %>%
+  summarize(num_species_total = n()) %>%
+  ungroup()
+
+```
+
+
+```{r}
+data_dir <- "/Users/tanesc/Documents/unassigner/unassigner_figures/strain_comparison_data"
+```
+
+```{r}
+## read in the full 16S results
+unassigner_full <- bind_rows(
+  read_delim(file.path(data_dir, "vsearch_output_whole.txt"), col_names = F, show_col_types = F) %>% mutate(region="Whole 16S"),
+  read_delim(file.path(data_dir, "vsearch_output_V1V2.txt"), col_names = F, show_col_types = F) %>% mutate(region="V1-V2"),
+  read_delim(file.path(data_dir, "vsearch_output_V4.txt"), col_names = F, show_col_types = F) %>% mutate(region="V4"),
+  read_delim(file.path(data_dir, "vsearch_output_V1V3.txt"), col_names = F, show_col_types = F) %>% mutate(region="V1-V3")
+) %>%
+  setNames(c("query_id", "typestrain_id", "id2", "alnlen", "mism", "gaps", "qilo", "qihi", "tilo", "tihi", "qs", "ts", "region")) %>%
+  right_join(rename(adf_LTP, query_id=id), by="query_id")  %>% ## not sure why there are a few reads that didn't have taxonomy info
+  mutate(region = factor(region)) %>%
+  mutate(region = fct_relevel(region, "V1-V3", after=0)) %>%
+  mutate(region = fct_relevel(region, "Whole 16S", after=0))
+
+unassigner <- unassigner_full %>%
+  filter(query_id != typestrain_id) ## get rid of the hits to itself
+
+family_colors <- c(ggsci::pal_npg("nrc")(10), "#8E8E8E")
+```
+
+
+## Fig4B
+
+```{r}
+## find species of interest
+assembly_summary <- read_delim("20220224_assembly_summary_refseq.txt", skip = 1, na = c("NA", "na", ""), show_col_types = FALSE)
+
+#assembly_summary <- read_delim("assembly_summary_genbank.txt", skip = 1, na = c("NA", "na", ""), show_col_types = FALSE)
+
+taxa_of_interest <- assembly_summary %>%
+  group_by(species_taxid) %>%
+  summarize(num_species = n()) %>%
+  arrange(-num_species) %>%
+  slice(1:20) %>%
+  bind_cols(data.frame(getTaxonomy(.$species_taxid,taxonomizr_db))) %>%
+  
+  
+  mutate(species = sub("Staphylococcus aureus", "Staphylococcus aureus subsp. aureus", species)) %>%
+  mutate(species = sub("Klebsiella pneumoniae", "Klebsiella pneumoniae subsp. pneumoniae", species)) %>%
+  mutate(species = sub("Salmonella enterica", "Salmonella enterica subsp. enterica", species)) %>%
+  mutate(species = sub("Enterobacter hormaechei", "Enterobacter hormaechei subsp. hormaechei", species))
+
+
+```
+
+
+```{r}
+temp <- unassigner %>%
+  filter(Species %in% taxa_of_interest$species) %>%
+  left_join(rename(adf_LTP, typestrain_id=id), by="typestrain_id") %>%
+  filter(mism <= 1) %>%
+  #filter(Species.x != Species.y) %>%
+  group_by(region, Species.x, Species.y) %>% 
+  slice(1) %>%
+  ungroup()
+```
+
+```{r}
+
+species_toPlot <- unique(temp$Species.x)
+
+ggplots <- list()
+
+for (i in 1:length(species_toPlot)) {
+  temp_plot <- temp %>% 
+    filter(Species.x == species_toPlot[i]) %>%
+    select(region, Species.y) %>%
+    mutate(identical = "yes") %>%
+    complete(region, Species.y) %>%
+    mutate(identical = ifelse(is.na(identical), "no", identical))
+  
+  ggplots[[i]] <- temp_plot %>%
+    ggplot(aes(x=region, y=Species.y)) +
+      geom_tile(aes(fill=identical), height=0.9, width=0.9) +
+      scale_fill_manual(values=c("#FFFFFF", "#000000")) +
+      theme_bw() +
+      coord_fixed(ratio=1) +
+      theme(
+        strip.background = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        panel.grid.major = element_blank(),
+        axis.title.y=element_text(angle=0)
+      ) +
+      guides(fill="none") +
+      labs(
+        x="",
+        y=gsub(" ", "\n", species_toPlot[i])
+      )
+}
+
+pdf("Fig3B.pdf", height=60)
+egg::ggarrange(plots=ggplots, ncol=1)
+dev.off()
+
+
+```
+
+
+## Fig 4A The number of species with <= 1 mismatch in each phylum.
+
+Full length 16S regions, extracted regions of V1-V2, V1-V3 and V4 from LTP were "unassigned". The results below show which families can't be effectively differentiated from other species.
+
+
+```{r}
+# Using the full-length gene, we identified XXX species that were indistinguishable from at least one other species
+unassigner %>%
+  filter(mism <= 1) %>%
+  group_by(query_id, region) %>%
+  slice(1) %>%
+  ungroup() %>%
+  filter(region == "Whole 16S") %>%
+  
+  droplevels() %>% nrow()
+```
+
+```{r}
+# Using the full-length gene, we identified XXX species that were indistinguishable from at least one other species
+unassigner %>%
+  filter(mism <= 1) %>%
+  group_by(query_id, region) %>%
+  slice(1) %>%
+  ungroup() %>%
+  
+  group_by(region) %>%
+  summarize(n()) %>%
+  ungroup()
+```
+
+
+```{r}
+unassigner %>%
+  filter(mism <= 1) %>%
+  group_by(query_id, region) %>%
+  slice(1) %>%
+  ungroup() %>%
+  droplevels() %>%
+  
+  group_by(Phylum, region) %>%
+  mutate(num_taxa = n()) %>%
+  ungroup() %>%
+  
+  group_by(Phylum) %>%
+  mutate(max_num_taxa = max(num_taxa)) %>%
+  ungroup() %>%
+  filter(max_num_taxa > 50) %>%
+  
+  mutate(Phylum = reorder(Phylum, max_num_taxa)) %>%
+  
+  mutate(Family_all = Family) %>%
+  mutate(Family_all = fct_explicit_na(Family_all, na_level="Other")) %>%
+  mutate(Family = fct_lump(Family_all, n=10)) %>%
+  
+  group_by(Phylum, Family, region) %>%
+  summarize(num_species=n()) %>%
+  ungroup() %>%
+  
+  ggplot(aes(x=Phylum, y=num_species, fill=Family)) +
+    geom_bar(stat="identity") +
+    theme_bw() +
+    facet_wrap(~region, ncol=1) +
+    #scale_fill_brewer(palette="Paired") +
+    scale_fill_manual(values=family_colors) +
+    coord_flip() +
+    theme(
+      panel.grid = element_blank(),
+      strip.background = element_blank()
+    ) +
+    labs(
+      y="Number of species indistinguishable by 16S sequencing"
+    )
+
+ggsave("Fig4A_1misMatch_numSpecies.pdf", height=6, width=8, useDingbats=F)
+```
+

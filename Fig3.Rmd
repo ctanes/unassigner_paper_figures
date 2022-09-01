@@ -1,0 +1,541 @@
+---
+title: "Figure 3 work"
+author: "Ceylan Tanes"
+date: \today
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r knitr setup, echo=FALSE}
+library(knitr)
+opts_chunk$set(
+  tidy=FALSE,
+  cache=FALSE,
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  dpi=100,
+  fig.width=6,
+  fig.height=4,
+  fig.align = "center"
+  )
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(pander)
+library(pheatbuilder)
+library(viridis)
+```
+
+
+```{r}
+read_unassigner <- function(file_path, best_hits = T) {
+
+    #get the best hit
+    if (best_hits) {
+        my_df <- read_tsv(file = file_path, show_col_types = FALSE) %>%
+            group_by(query_id) %>%
+            slice_min(order_by = probability_incompatible, n = 1, with_ties = F) %>%
+            ungroup()
+    } else {
+        my_df <- read_tsv(file = file_path, show_col_types = FALSE)
+    }
+
+    #gets rid of duplicates
+    my_df2 <- my_df %>%
+        group_by(query_id, species) %>%
+        slice(1) %>%
+        ungroup()
+
+    return(my_df2)
+
+}
+
+read_dada2 <- function(file_path) {
+
+    #gets rid of duplicates
+    my_df <- read_tsv(file = file_path, show_col_types = FALSE) %>%
+        group_by(query_id, species) %>%
+        slice(1) %>%
+        ungroup()
+
+    return(my_df)
+
+}
+
+```
+
+```{r}
+read_threshold <- 1000
+
+```
+
+
+```{r}
+# Load data
+data_dir <- "/Users/tanesc/Documents/unassigner/scott_reports/unassigner_prj/16s_ubiomes/do_first"
+## Load unassigner data
+unassigner_suffix_fp <- "QIIME_output/denoise_fwd_0-240_rev_0-240/representative_seq_fasta/unassigned/unassigner_output.tsv"
+unassigner <- rbind(
+    ## stool combo
+    read_unassigner(file.path(data_dir, "gut_PMID32461638/combo_16S_V1V2", unassigner_suffix_fp)),
+
+    ## stool 499 Kahn
+    read_unassigner(file.path(data_dir, "gut_PMID32461638/run_499", unassigner_suffix_fp)),
+
+    ## nasal 243 Rhee run3
+    read_unassigner(file.path(data_dir, "nasal_PRJNA473785/run_243", unassigner_suffix_fp)),
+
+    ## oral Aurea
+    read_unassigner(file.path(data_dir, "oral_simonsoro_PRJNA518155", unassigner_suffix_fp))
+) %>%
+    unique() %>%
+    filter(probability_incompatible < 0.5) %>%
+    separate(species, into=c("unassigner_species", "subspecies"), sep=" subsp", remove=T) %>%
+    select(-subspecies)
+rm(unassigner_suffix_fp)
+
+
+## Load dada2 data
+dada2_suffix_fp <- "QIIME_output/denoise_fwd_0-240_rev_0-240/representative_seq_fasta/dada2/dada2_species_assignments.tsv"
+dada2 <- rbind(
+    ## stool combo
+    read_dada2(file.path(data_dir, "gut_PMID32461638/combo_16S_V1V2", dada2_suffix_fp)),
+
+    ## stool 499 Kahn
+    read_dada2(file.path(data_dir, "gut_PMID32461638/run_499", dada2_suffix_fp)),
+
+    ## nasal 243 Rhee run3
+    read_dada2(file.path(data_dir, "nasal_PRJNA473785/run_243", dada2_suffix_fp)),
+
+    ## oral Aurea
+    read_dada2(file.path(data_dir, "oral_simonsoro_PRJNA518155", dada2_suffix_fp))
+) %>%
+    select(-sequence) %>%
+    unique() %>%
+    rename(dada2_species = species) %>%
+    filter(str_detect(dada2_species, ".*NA.*", negate = T)) 
+rm(dada2_suffix_fp)
+
+```
+
+
+```{r}
+## Load metadata
+controls_md <- read_tsv(file = file.path(data_dir,  "gut_PMID32461638/combo_16S_V1V2/Healthy_Humans_metadata_Jake_edited_for_Q5.tsv"), show_col_types = FALSE) %>%
+    filter(!is.na(PatientID)) %>%
+    select(SampleID = "#SampleID", SubjectID = PatientID) %>%
+    mutate(database = "COMBO") %>%
+    mutate(sample_type = "Feces")
+
+run_499_md <- read_tsv(file = file.path(data_dir, "gut_PMID32461638/run_499/20181001_Kahn_run5_mapping_file.tsv"), show_col_types = FALSE) %>%
+    filter(SampleType == "Feces") %>%
+    select(SampleID = "#SampleID", SubjectID, sample_type="SampleType", final_library_concentration_ng_ul) %>%
+    mutate(database = "CCM")
+
+
+run_243_md <- read_tsv(file = file.path(data_dir, "nasal_PRJNA473785/run_243/20170525_rhee_lab_mapping_file_only.txt"), show_col_types = FALSE) %>%
+    filter(!study_group %in% c("Neg. Control")) %>%
+    filter(!is.na(study_group)) %>%
+    select(SampleID="#SampleID", SubjectID, final_library_concentration_ng_ul) %>%
+    mutate(SubjectID = paste0("s", SubjectID)) %>%
+    mutate(sample_type = "Nasal") %>%
+    mutate(database = "Rhee")
+
+aurea_md <- read_tsv(file = file.path(data_dir, "oral_simonsoro_PRJNA518155/metadata_unnested.tsv"), show_col_types = FALSE) %>%
+    select(SampleID = "#SampleID", SubjectID, Timepoint, PicoGreen) %>%
+    mutate(sample_type = "Oropharyngeal") %>%
+    mutate(database = "Aurea")
+
+
+
+## Load count data
+counts_suffix_fp <- "QIIME_output/denoise_fwd_0-240_rev_0-240/feature_table/feature-table.tsv"
+
+counts <- bind_rows(
+    ## stool combo
+    read_tsv(file = file.path(data_dir, "gut_PMID32461638/combo_16S_V1V2", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
+    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
+    right_join(controls_md, by="SampleID"),
+
+    ## stool 499 Kahn
+    read_tsv(file = file.path(data_dir, "gut_PMID32461638/run_499", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
+    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
+    right_join(run_499_md, by="SampleID"),
+
+    ## nasal 243 Rhee run3
+    read_tsv(file = file.path(data_dir, "nasal_PRJNA473785/run_243", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
+    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
+    right_join(run_243_md, by="SampleID"),
+
+    ## oral Aurea
+    read_tsv(file = file.path(data_dir, "oral_simonsoro_PRJNA518155", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
+    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
+    right_join(aurea_md, by="SampleID")
+) %>%
+    group_by(SampleID, database) %>%
+    mutate(total_reads = sum(counts)) %>%
+    ungroup() %>%
+    filter(total_reads > read_threshold) %>%
+    
+    rename(query_id = "#OTU ID")
+
+
+counts <- counts %>%
+    left_join(dada2, by="query_id") %>%
+    left_join(unassigner, by="query_id") %>%
+    mutate(species_label = if_else(
+        !is.na(unassigner_species), unassigner_species, dada2_species)) %>%
+    mutate(software_label = case_when(
+        is.na(unassigner_species) & is.na(dada2_species) ~ as.character(NA),
+        is.na(unassigner_species) & !is.na(dada2_species) ~ "DADA2 only",
+        !is.na(unassigner_species) & is.na(dada2_species) ~ "Unassigner only",
+        unassigner_species == dada2_species ~ "Both agree",
+        unassigner_species != dada2_species ~ "Conflicting species labels")) %>%
+    group_by(sample_type) %>%
+    mutate(all_reads = sum(counts)) %>% # number of reads total for each sample type
+    ungroup()
+
+rm(controls_md, run_499_md, run_243_md, aurea_md, counts_suffix_fp)
+```
+
+
+
+
+```{r}
+counts_summed <- counts %>%
+    group_by(query_id, sample_type, dada2_species, unassigner_species, species_label, software_label, all_reads) %>%
+    summarize(total_reads = sum(counts)) %>% # number of reads for each ASV in each sample type
+    ungroup() %>%
+    mutate(software_label = factor(software_label, levels=c("Both agree", "Unassigner only", "DADA2 only", "Conflicting species labels"))) %>%
+    group_by(sample_type) %>%
+    mutate(ranks = rank(-total_reads, ties.method="first")) %>%
+    ungroup() 
+
+## check if there are any more bacteria that don't match because of changes in genus names
+genus_differences <- counts_summed %>%
+    separate(dada2_species, into=c("dada2_genus", "dada2Species"), remove=F) %>%
+    separate(unassigner_species, into=c("unassigner_genus", "unassignerSpecies", remove=F)) %>%
+    mutate(diff_genus = dada2_genus != unassigner_genus) %>%
+    filter(diff_genus)
+
+ann_colors = list(
+  #software_label = factor_palette(counts_summed$software_label, c("#394063", "#60B5C2", "#D3CBBB", "#5A7285"))
+  software_label = factor_palette(counts_summed$software_label, c("#B55B46", "#EEA382", "#647390", "#635468"))
+)
+```
+
+
+## Fig 3A
+
+```{r}
+## find the number of reads that got consistent assignments, and misassignments
+
+counts_summed %>%
+  mutate(software_label = fct_explicit_na(software_label, na_level="No match")) %>%
+  group_by(sample_type, software_label, all_reads) %>%
+  summarize(counts = sum(total_reads)) %>%
+  ungroup() %>%
+  pander(split.table=Inf)
+
+
+```
+
+
+
+
+```{r}
+# The code is modified from the setreuler package
+setreuler_coordinates <- function (in_a, in_b, widthA = 10, offset = 0) 
+{
+    in_a <- as.logical(in_a)
+    in_b <- as.logical(in_b)
+    area_a <- sum(in_a)
+    area_b <- sum(in_b)
+    area_ab <- sum(in_a & in_b)
+    width_a <- widthA
+    height_a <- area_a/width_a
+    x_a <- 0
+    y_a <- 0
+    width_b <- widthA-offset
+    height_b <- area_b/width_b
+    x_b <- offset
+    y_b <- 0 - ((area_b-area_ab)/min(width_a, width_b))
+    data.frame(x = c(x_a, x_a, x_a + width_a, x_a + width_a,     x_b, x_b, x_b + width_b, x_b + width_b),
+               y = c(y_a, y_a + height_a, y_a + height_a, y_a,   y_b, y_b + height_b, y_b + height_b, y_b), 
+               group = c("A", "A", "A", "A", "B", "B", "B", "B"), stringsAsFactors = FALSE)
+}
+
+
+setreuler_plot <- function (coordinates_data, radius = NULL, fill_colors = c("#F8766D", "#619CFF"), alpha=0.5) 
+{
+    p <- ggplot2::ggplot(coordinates_data, ggplot2::aes(x = x, 
+        y = y))
+    if (is.null(radius)) {
+        p <- p + ggplot2::geom_polygon(ggplot2::aes(fill = group, 
+            group = group), alpha = alpha, data = coordinates_data) + 
+            ggplot2::geom_polygon(ggplot2::aes(group = group), 
+                color = "black", fill = NA, data = coordinates_data) +
+            scale_fill_manual(values=fill_colors)
+    }
+    else {
+        p <- p + ggforce::geom_shape(ggplot2::aes(fill = group, 
+            group = group), alpha = alpha, radius = radius, data = coordinates_data) + 
+            ggforce::geom_shape(ggplot2::aes(group = group), 
+                color = "black", fill = NA, radius = radius, 
+                data = coordinates_data) +
+            scale_fill_manual(values=fill_colors)
+    }
+    p + ggplot2::coord_equal() + ggplot2::theme_void() + ggplot2::theme(legend.position = "none")
+}
+
+
+
+venn_coord <- counts_summed %>%
+  filter(!is.na(software_label)) %>%
+  filter(!software_label %in% "Conflicting species labels") %>%
+  group_by(sample_type, software_label, all_reads) %>%
+  summarize(counts = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(counts = round(counts / 1000)) %>%
+  select(-all_reads) %>%
+  mutate(start_fake = 1) %>%
+  group_by(sample_type, software_label) %>%
+  expand(start_fake, counts, hello = full_seq(start_fake:counts, 1)) %>% # from https://stackoverflow.com/questions/41471391/expanding-data-frame-using-tidyverse
+  select(-one_of(c("start_fake", "hello"))) %>%
+  mutate(set_unassigner = software_label %in% c("Both agree", "Unassigner only")) %>%
+  mutate(set_dada2 = software_label %in% c("Both agree", "DADA2 only")) %>%
+  group_by(sample_type) %>%
+  #summarize(setreuler_coordinates2(set_unassigner, set_dada2, offset = 65, widthA = 80, widthB=15)) %>%
+  #summarize(setreuler_coordinates(set_unassigner, set_dada2, offset = 30, width = 80)) %>%
+  summarize(setreuler_coordinates(set_unassigner, set_dada2, widthA = 120, offset = 70)) %>%
+  ungroup()
+
+  
+venn_coord %>%
+  filter(sample_type == "Feces") %>%
+  #setreuler_plot()
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_feces.pdf", useDingbats=F, width=6)
+
+
+
+venn_coord %>%
+  filter(sample_type == "Nasal") %>%
+  #setreuler_plot()
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_Nasal.pdf", useDingbats=F, width=6)
+
+venn_coord %>%
+  filter(sample_type == "Oropharyngeal") %>%
+  #setreuler_plot()
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_Oropharyngeal.pdf", useDingbats=F, width=6)
+```
+
+
+## Fig 3B
+
+```{r}
+## find the number of reads that got consistent assignments, and misassignments
+
+counts_summed %>%
+  mutate(software_label = fct_explicit_na(software_label, na_level="No match")) %>%
+  group_by(sample_type, software_label, all_reads) %>%
+  summarize(counts = sum(total_reads)) %>%
+  ungroup() %>%
+  pander(split.table=Inf)
+
+## number of unique ASVs
+counts %>% select(query_id, sample_type) %>% unique() %>% group_by(sample_type) %>% count()
+
+
+## percent of species assigned with unassigner
+counts_summed %>% 
+  mutate(unassigner = !is.na(unassigner_species)) %>%
+  group_by(sample_type, unassigner, all_reads) %>% 
+  summarize(assigned = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(perc_assigned = assigned/all_reads)
+
+## percent of species assigned with dada2
+counts_summed %>% 
+  mutate(dada2 = !is.na(dada2_species)) %>%
+  group_by(sample_type, dada2, all_reads) %>% 
+  summarize(assigned = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(perc_assigned = assigned/all_reads)
+
+## number of reads that were conflicting
+counts_summed %>%
+  filter(software_label == "Conflicting species labels") %>%
+  group_by(sample_type, all_reads) %>%
+  summarize(conflicting = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(perc_conflicting = conflicting / all_reads)
+
+counts_summed %>%
+  filter(software_label == "DADA2 only") %>%
+  group_by(sample_type, all_reads) %>%
+  summarize(conflicting = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(perc_conflicting = conflicting / all_reads)
+
+```
+
+
+```{r}
+## percentage of reads annotated in each sample
+counts %>%
+  group_by(SampleID) %>%
+  mutate(reads_per_sample = sum(counts)) %>%
+  ungroup() %>%
+  
+  filter(!is.na(unassigner_species)) %>%
+  
+  group_by(SampleID, sample_type, reads_per_sample) %>%
+  summarize(num_annotated = sum(counts)) %>%
+  ungroup() %>%
+  
+  mutate(perc_annotated = num_annotated / reads_per_sample) %>%
+  
+  group_by(sample_type) %>%
+  summarize(mean_ab = mean(perc_annotated), sd_ab = sd(perc_annotated)) 
+```
+
+```{r}
+# pick the species with the most number of reads assigned per sample type
+top_species <- counts_summed %>%
+    filter(!is.na(species_label)) %>%
+    group_by(sample_type, species_label) %>%
+    summarize(total_species_reads = sum(total_reads)) %>%
+    ungroup() %>%
+    group_by(sample_type) %>%
+    mutate(rank_species = rank(-total_species_reads, ties.method="first")) %>%
+    ungroup() %>%
+    filter(rank_species <= 10) %>%
+    select(-total_species_reads)
+
+counts_summed %>%
+    mutate(software_label = fct_rev(software_label)) %>%
+    group_by(sample_type, species_label, software_label, all_reads) %>%
+    summarize(total_species_reads = sum(total_reads)) %>%
+    ungroup() %>%
+    right_join(top_species, by=c("sample_type", "species_label")) %>%
+    mutate(species_proportion = total_species_reads / all_reads) %>%
+    mutate(species_label = fct_reorder(species_label, -rank_species)) %>%
+    ggplot(aes(y = species_label, x = species_proportion, fill = software_label)) +
+        geom_col(width=0.8) +
+        scale_fill_manual(values = ann_colors$software_label) +
+        facet_grid(sample_type~., space="free", scales="free") +
+        scale_x_continuous(labels=scales:::percent, expand = c(0, 0), limits=c(0,0.25)) +
+        theme_bw() +
+        theme(
+            strip.background = element_blank(),
+            panel.grid.major.y = element_blank(),
+            legend.position = "bottom",
+            legend.direction = "horizontal"
+        ) +
+        guides(fill=guide_legend(ncol=2)) +
+        labs(y="", fill="", x="Proportion of all reads in study")
+
+
+ggsave("Fig3B_topSpecies.pdf", height=6, width=6, useDingbats=F)
+
+```
+
+
+## Fig 3C
+
+```{r}
+## select a few samples with highest representation of common bacteria 
+temp <- counts %>%
+    group_by(SampleID, sample_type) %>%
+    mutate(total_reads_per_sample = sum(counts)) %>%
+    ungroup() %>% 
+  
+    select(sample_type, SampleID, unassigner_species, dada2_species, total_reads_per_sample, counts) %>%
+    pivot_longer(cols=c("unassigner_species", "dada2_species"), names_to="method", values_to="species_label") %>% 
+    
+    filter(!is.na(species_label)) %>%
+    
+    group_by(sample_type, SampleID, method, species_label, total_reads_per_sample) %>%
+    summarize(per_species_counts = sum(counts)) %>%
+    ungroup() %>%
+    
+    mutate(props = per_species_counts / total_reads_per_sample) %>%
+    select(-one_of(c("per_species_counts", "total_reads_per_sample"))) %>%
+    
+    full_join(top_species, by=c("sample_type", "species_label")) %>%
+    mutate(rank_species = ifelse(is.na(rank_species), 99, rank_species)) %>%
+  
+    mutate(temp = paste(sample_type, species_label)) %>%
+    mutate(temp = factor(temp)) %>%
+    
+    mutate(species_label = fct_other(temp, keep=paste(top_species$sample_type, top_species$species_label))) %>%
+  
+    group_by(sample_type, SampleID, method, species_label, rank_species) %>%
+    summarize(props = sum(props)) %>%
+    ungroup()
+  
+
+
+picked_samples <- temp %>%
+    filter(!SampleID %in% c("S.641000912.OW.6w.rep2", "M114A.R", "M107A.R")) %>%
+    filter(rank_species < 20) %>%
+    group_by(sample_type, SampleID, method) %>%
+    summarize(total_prop_toShow = sum(props)) %>%
+    ungroup() %>%
+    group_by(sample_type, SampleID) %>%
+    summarize(total_prop_toShow_max = max(total_prop_toShow)) %>%
+    ungroup() %>%
+    group_by(sample_type) %>%
+    mutate(rank_sample = rank(-total_prop_toShow_max, ties.method="average")) %>%
+    ungroup()  %>%
+    filter(rank_sample <= 5) %>%
+    mutate(rank_sample = paste0("s", rank_sample))
+  
+
+
+temp %>%
+    right_join(select(picked_samples, SampleID, rank_sample), by="SampleID") %>%
+    mutate(method = sub("_species", "", method)) %>%
+    mutate(method = factor(method, levels=c("unassigner", "dada2"), labels=c("Unassigner", "DADA2"))) %>%
+    
+    #mutate(sample_type = factor(sample_type)) %>%
+    #mutate(forOrder = rank_species * as.integer(sample_type)^(as.integer(sample_type)+2)) %>%
+    #mutate(species_label = fct_reorder(species_label, -forOrder)) %>%
+    mutate(species_label = fct_relevel(species_label, "Other", after=0)) %>%
+    
+    ggplot(aes(y = rank_sample, x = props, fill = species_label)) +
+        geom_col() +
+        facet_grid(sample_type~method, scales = "free_y", space="free") +
+        scale_x_continuous(labels=scales:::percent, limits=c(0,1)) +
+        scale_fill_manual(values = c("#808080",
+                                     viridis(10, option="mako", direction=-1, begin=0.1),
+                                     viridis(10, option="rocket", direction=-1, begin=0.2),
+                                     viridis(10, option="plasma", direction=-1)
+                                     )) +
+        theme_bw() +
+        theme(
+            strip.background = element_blank(),
+            panel.grid = element_blank(),
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank(),
+            legend.key.size = unit(0.4, 'cm')
+        ) +
+        coord_flip() +
+        guides(fill=guide_legend(ncol=1, reverse=F)) +
+        labs(
+            x="Relative abundance", 
+            fill="Species", y="Samples"
+            )
+ggsave("Fig3C_exampleSamples.pdf", height=6, width=8, useDingbats=F)
+```
+
+
+
