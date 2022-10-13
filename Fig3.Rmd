@@ -179,7 +179,7 @@ venn_coord %>%
   filter(sample_type == "Feces") %>%
   #setreuler_plot()
   setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
-ggsave("Fig3A_feces.pdf", useDingbats=F, width=6)
+ggsave("Fig3A_Feces.pdf", useDingbats=F, width=6)
 
 
 
