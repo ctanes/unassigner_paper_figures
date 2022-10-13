@@ -1,6 +1,6 @@
 ---
 title: "Figure 4 work"
-author: "PennCHOP Microbiome Program"
+author: "Ceylan Tanes"
 date: \today
 output: 
     pdf_document:
@@ -29,14 +29,10 @@ library(viridis)
 library(ggbeeswarm)
 library(wesanderson)
 library(pander)
-library(kableExtra)
-library(taxonomizr)
+#library(kableExtra)
 ```
 
 
-```{r eval=T}
-taxonomizr_db <- "/Users/tanesc/Documents/DBs/taxonomizr/20211229_taxonomizr/accessionTaxa.sql"
-```
 
 ```{r}
 ## read in full length alignment results
@@ -55,7 +51,7 @@ database_counts_LTP <- adf_LTP %>%
 
 
 ```{r}
-data_dir <- "/Users/tanesc/Documents/unassigner/unassigner_figures/strain_comparison_data"
+data_dir <- "data/Fig4"
 ```
 
 ```{r}
@@ -82,25 +78,8 @@ family_colors <- c(ggsci::pal_npg("nrc")(10), "#8E8E8E")
 ## Fig4B
 
 ```{r}
-## find species of interest
-assembly_summary <- read_delim("20220224_assembly_summary_refseq.txt", skip = 1, na = c("NA", "na", ""), show_col_types = FALSE)
-
-#assembly_summary <- read_delim("assembly_summary_genbank.txt", skip = 1, na = c("NA", "na", ""), show_col_types = FALSE)
-
-taxa_of_interest <- assembly_summary %>%
-  group_by(species_taxid) %>%
-  summarize(num_species = n()) %>%
-  arrange(-num_species) %>%
-  slice(1:20) %>%
-  bind_cols(data.frame(getTaxonomy(.$species_taxid,taxonomizr_db))) %>%
-  
-  
-  mutate(species = sub("Staphylococcus aureus", "Staphylococcus aureus subsp. aureus", species)) %>%
-  mutate(species = sub("Klebsiella pneumoniae", "Klebsiella pneumoniae subsp. pneumoniae", species)) %>%
-  mutate(species = sub("Salmonella enterica", "Salmonella enterica subsp. enterica", species)) %>%
-  mutate(species = sub("Enterobacter hormaechei", "Enterobacter hormaechei subsp. hormaechei", species))
-
-
+## These are the top sequenced species as of February 2022 according to assembly_summary_refseq.txt downloaded from NCBI
+taxa_of_interest <- read_delim(file.path(data_dir, "taxa_of_interest.txt"))
 ```
 
 
@@ -148,7 +127,7 @@ for (i in 1:length(species_toPlot)) {
       )
 }
 
-pdf("Fig3B.pdf", height=60)
+pdf("Fig4B.pdf", height=60)
 egg::ggarrange(plots=ggplots, ncol=1)
 dev.off()
 
@@ -162,19 +141,7 @@ Full length 16S regions, extracted regions of V1-V2, V1-V3 and V4 from LTP were 
 
 
 ```{r}
-# Using the full-length gene, we identified XXX species that were indistinguishable from at least one other species
-unassigner %>%
-  filter(mism <= 1) %>%
-  group_by(query_id, region) %>%
-  slice(1) %>%
-  ungroup() %>%
-  filter(region == "Whole 16S") %>%
-  
-  droplevels() %>% nrow()
-```
-
-```{r}
-# Using the full-length gene, we identified XXX species that were indistinguishable from at least one other species
+# Using the whole length gene, and V1-V3, V1-V2, and V4 regions, we identified XXX species that were indistinguishable from at least one other species
 unassigner %>%
   filter(mism <= 1) %>%
   group_by(query_id, region) %>%

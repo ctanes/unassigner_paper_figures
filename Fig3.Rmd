@@ -32,160 +32,22 @@ library(viridis)
 ```
 
 
-```{r}
-read_unassigner <- function(file_path, best_hits = T) {
-
-    #get the best hit
-    if (best_hits) {
-        my_df <- read_tsv(file = file_path, show_col_types = FALSE) %>%
-            group_by(query_id) %>%
-            slice_min(order_by = probability_incompatible, n = 1, with_ties = F) %>%
-            ungroup()
-    } else {
-        my_df <- read_tsv(file = file_path, show_col_types = FALSE)
-    }
-
-    #gets rid of duplicates
-    my_df2 <- my_df %>%
-        group_by(query_id, species) %>%
-        slice(1) %>%
-        ungroup()
-
-    return(my_df2)
-
-}
-
-read_dada2 <- function(file_path) {
-
-    #gets rid of duplicates
-    my_df <- read_tsv(file = file_path, show_col_types = FALSE) %>%
-        group_by(query_id, species) %>%
-        slice(1) %>%
-        ungroup()
-
-    return(my_df)
-
-}
-
-```
 
 ```{r}
-read_threshold <- 1000
-
+data_dir <- "data/Fig3"
 ```
 
 
 ```{r}
-# Load data
-data_dir <- "/Users/tanesc/Documents/unassigner/scott_reports/unassigner_prj/16s_ubiomes/do_first"
-## Load unassigner data
-unassigner_suffix_fp <- "QIIME_output/denoise_fwd_0-240_rev_0-240/representative_seq_fasta/unassigned/unassigner_output.tsv"
-unassigner <- rbind(
-    ## stool combo
-    read_unassigner(file.path(data_dir, "gut_PMID32461638/combo_16S_V1V2", unassigner_suffix_fp)),
-
-    ## stool 499 Kahn
-    read_unassigner(file.path(data_dir, "gut_PMID32461638/run_499", unassigner_suffix_fp)),
-
-    ## nasal 243 Rhee run3
-    read_unassigner(file.path(data_dir, "nasal_PRJNA473785/run_243", unassigner_suffix_fp)),
-
-    ## oral Aurea
-    read_unassigner(file.path(data_dir, "oral_simonsoro_PRJNA518155", unassigner_suffix_fp))
-) %>%
-    unique() %>%
-    filter(probability_incompatible < 0.5) %>%
-    separate(species, into=c("unassigner_species", "subspecies"), sep=" subsp", remove=T) %>%
-    select(-subspecies)
-rm(unassigner_suffix_fp)
-
-
-## Load dada2 data
-dada2_suffix_fp <- "QIIME_output/denoise_fwd_0-240_rev_0-240/representative_seq_fasta/dada2/dada2_species_assignments.tsv"
-dada2 <- rbind(
-    ## stool combo
-    read_dada2(file.path(data_dir, "gut_PMID32461638/combo_16S_V1V2", dada2_suffix_fp)),
-
-    ## stool 499 Kahn
-    read_dada2(file.path(data_dir, "gut_PMID32461638/run_499", dada2_suffix_fp)),
-
-    ## nasal 243 Rhee run3
-    read_dada2(file.path(data_dir, "nasal_PRJNA473785/run_243", dada2_suffix_fp)),
-
-    ## oral Aurea
-    read_dada2(file.path(data_dir, "oral_simonsoro_PRJNA518155", dada2_suffix_fp))
-) %>%
-    select(-sequence) %>%
-    unique() %>%
-    rename(dada2_species = species) %>%
-    filter(str_detect(dada2_species, ".*NA.*", negate = T)) 
-rm(dada2_suffix_fp)
-
+# Load unassigner and dada2 data
+unassigner <- read_delim(file.path(data_dir, "Fig3_unassigner_results.txt"),show_col_types = FALSE)
+dada2 <- read_delim(file.path(data_dir, "Fig3_dada2_results.txt"),show_col_types = FALSE)
 ```
 
 
 ```{r}
-## Load metadata
-controls_md <- read_tsv(file = file.path(data_dir,  "gut_PMID32461638/combo_16S_V1V2/Healthy_Humans_metadata_Jake_edited_for_Q5.tsv"), show_col_types = FALSE) %>%
-    filter(!is.na(PatientID)) %>%
-    select(SampleID = "#SampleID", SubjectID = PatientID) %>%
-    mutate(database = "COMBO") %>%
-    mutate(sample_type = "Feces")
-
-run_499_md <- read_tsv(file = file.path(data_dir, "gut_PMID32461638/run_499/20181001_Kahn_run5_mapping_file.tsv"), show_col_types = FALSE) %>%
-    filter(SampleType == "Feces") %>%
-    select(SampleID = "#SampleID", SubjectID, sample_type="SampleType", final_library_concentration_ng_ul) %>%
-    mutate(database = "CCM")
-
-
-run_243_md <- read_tsv(file = file.path(data_dir, "nasal_PRJNA473785/run_243/20170525_rhee_lab_mapping_file_only.txt"), show_col_types = FALSE) %>%
-    filter(!study_group %in% c("Neg. Control")) %>%
-    filter(!is.na(study_group)) %>%
-    select(SampleID="#SampleID", SubjectID, final_library_concentration_ng_ul) %>%
-    mutate(SubjectID = paste0("s", SubjectID)) %>%
-    mutate(sample_type = "Nasal") %>%
-    mutate(database = "Rhee")
-
-aurea_md <- read_tsv(file = file.path(data_dir, "oral_simonsoro_PRJNA518155/metadata_unnested.tsv"), show_col_types = FALSE) %>%
-    select(SampleID = "#SampleID", SubjectID, Timepoint, PicoGreen) %>%
-    mutate(sample_type = "Oropharyngeal") %>%
-    mutate(database = "Aurea")
-
-
-
 ## Load count data
-counts_suffix_fp <- "QIIME_output/denoise_fwd_0-240_rev_0-240/feature_table/feature-table.tsv"
-
-counts <- bind_rows(
-    ## stool combo
-    read_tsv(file = file.path(data_dir, "gut_PMID32461638/combo_16S_V1V2", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
-    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
-    right_join(controls_md, by="SampleID"),
-
-    ## stool 499 Kahn
-    read_tsv(file = file.path(data_dir, "gut_PMID32461638/run_499", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
-    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
-    right_join(run_499_md, by="SampleID"),
-
-    ## nasal 243 Rhee run3
-    read_tsv(file = file.path(data_dir, "nasal_PRJNA473785/run_243", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
-    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
-    right_join(run_243_md, by="SampleID"),
-
-    ## oral Aurea
-    read_tsv(file = file.path(data_dir, "oral_simonsoro_PRJNA518155", counts_suffix_fp), skip = 1, show_col_types = FALSE) %>%
-    pivot_longer(-`#OTU ID`, names_to = "SampleID", values_to = "counts") %>%
-    right_join(aurea_md, by="SampleID")
-) %>%
-    group_by(SampleID, database) %>%
-    mutate(total_reads = sum(counts)) %>%
-    ungroup() %>%
-    filter(total_reads > read_threshold) %>%
-    
-    rename(query_id = "#OTU ID")
-
-
-counts <- counts %>%
+counts <- read_delim(file.path(data_dir, "Fig3_count_data.txt"), show_col_types = FALSE) %>%
     left_join(dada2, by="query_id") %>%
     left_join(unassigner, by="query_id") %>%
     mutate(species_label = if_else(
@@ -199,8 +61,6 @@ counts <- counts %>%
     group_by(sample_type) %>%
     mutate(all_reads = sum(counts)) %>% # number of reads total for each sample type
     ungroup()
-
-rm(controls_md, run_499_md, run_243_md, aurea_md, counts_suffix_fp)
 ```
 
 
@@ -224,7 +84,6 @@ genus_differences <- counts_summed %>%
     filter(diff_genus)
 
 ann_colors = list(
-  #software_label = factor_palette(counts_summed$software_label, c("#394063", "#60B5C2", "#D3CBBB", "#5A7285"))
   software_label = factor_palette(counts_summed$software_label, c("#B55B46", "#EEA382", "#647390", "#635468"))
 )
 ```
@@ -249,7 +108,7 @@ counts_summed %>%
 
 
 ```{r}
-# The code is modified from the setreuler package
+# The code is modified from the kylebittinger/setreuler package
 setreuler_coordinates <- function (in_a, in_b, widthA = 10, offset = 0) 
 {
     in_a <- as.logical(in_a)
@@ -506,9 +365,6 @@ temp %>%
     mutate(method = sub("_species", "", method)) %>%
     mutate(method = factor(method, levels=c("unassigner", "dada2"), labels=c("Unassigner", "DADA2"))) %>%
     
-    #mutate(sample_type = factor(sample_type)) %>%
-    #mutate(forOrder = rank_species * as.integer(sample_type)^(as.integer(sample_type)+2)) %>%
-    #mutate(species_label = fct_reorder(species_label, -forOrder)) %>%
     mutate(species_label = fct_relevel(species_label, "Other", after=0)) %>%
     
     ggplot(aes(y = rank_sample, x = props, fill = species_label)) +
