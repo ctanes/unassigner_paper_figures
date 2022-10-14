@@ -47,7 +47,12 @@ dada2 <- read_delim(file.path(data_dir, "Fig3_dada2_results.txt"),show_col_types
 
 ```{r}
 ## Load count data
-counts <- read_delim(file.path(data_dir, "Fig3_count_data.txt"), show_col_types = FALSE) %>%
+counts <- 
+    bind_rows(
+        read_delim(file.path(data_dir, "Feces_Fig3_count_data.txt"), show_col_types = FALSE),
+        read_delim(file.path(data_dir, "Nasal_Fig3_count_data.txt"), show_col_types = FALSE),
+        read_delim(file.path(data_dir, "Oropharyngeal_Fig3_count_data.txt"), show_col_types = FALSE)
+    ) %>%
     left_join(dada2, by="query_id") %>%
     left_join(unassigner, by="query_id") %>%
     mutate(species_label = if_else(
