@@ -1,0 +1,21 @@
+species_taxid	num_species	species
+562	27086	Escherichia coli
+1280	13715	Staphylococcus aureus subsp. aureus
+573	12416	Klebsiella pneumoniae subsp. pneumoniae
+28901	10800	Salmonella enterica subsp. enterica
+1313	8732	Streptococcus pneumoniae
+1773	6830	Mycobacterium tuberculosis
+287	6306	Pseudomonas aeruginosa
+470	5928	Acinetobacter baumannii
+1639	4062	Listeria monocytogenes
+1352	2642	Enterococcus faecium
+1496	2193	Clostridioides difficile
+487	2189	Neisseria meningitidis
+1314	2185	Streptococcus pyogenes
+210	2116	Helicobacter pylori
+197	2106	Campylobacter jejuni
+1351	2036	Enterococcus faecalis
+158836	1923	Enterobacter hormaechei subsp. hormaechei
+36809	1818	Mycobacteroides abscessus
+1307	1763	Streptococcus suis
+670	1705	Vibrio parahaemolyticus
