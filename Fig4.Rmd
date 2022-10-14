@@ -24,12 +24,6 @@ opts_chunk$set(
 
 ```{r R packages, message=FALSE, warning=F}
 library(tidyverse)
-library(RColorBrewer)
-library(viridis)
-library(ggbeeswarm)
-library(wesanderson)
-library(pander)
-#library(kableExtra)
 ```
 
 
@@ -88,7 +82,6 @@ temp <- unassigner %>%
   filter(Species %in% taxa_of_interest$species) %>%
   left_join(rename(adf_LTP, typestrain_id=id), by="typestrain_id") %>%
   filter(mism <= 1) %>%
-  #filter(Species.x != Species.y) %>%
   group_by(region, Species.x, Species.y) %>% 
   slice(1) %>%
   ungroup()
@@ -185,7 +178,6 @@ unassigner %>%
     geom_bar(stat="identity") +
     theme_bw() +
     facet_wrap(~region, ncol=1) +
-    #scale_fill_brewer(palette="Paired") +
     scale_fill_manual(values=family_colors) +
     coord_flip() +
     theme(
