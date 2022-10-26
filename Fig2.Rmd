@@ -275,17 +275,19 @@ b %>%
   scale_y_continuous(breaks = pctid_breaks, labels = pctid_labels) +
   scale_x_continuous(breaks = ani_breaks, labels = ani_labels) +
   scale_color_manual(values = c("#1F77B4", "#FF7F0E"), guide = "none") +
-  facet_wrap(~ query_species, ncol = 1) +
+  facet_wrap(~ query_species, ncol = 3) +
   labs(
-    x = "Whole-genome\naverage nucleotide identity (ANI)",
-    y = "16S rRNA gene similarity") +
+    x = "Whole-genome average nucleotide identity (ANI)",
+    y = "16S rRNA\ngene similarity") +
   theme_bw() +
+  coord_equal() +
   theme(
+    #aspect.ratio=1,
     strip.background = element_blank(),
     strip.text.x = element_text(vjust=1),
     panel.spacing = grid::unit(1, "lines"),
     plot.margin = unit(c(2, 5, 2, 2), "mm"))
-ggsave("unassigner_fig2a.pdf", width = 2.9, height = 5.0, useDingbats = F)
+ggsave("unassigner_fig2a.pdf", width = 9.5, height = 3, useDingbats = F)
 ```
 
 ## Hard threshold algorithm

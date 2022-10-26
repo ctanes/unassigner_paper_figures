@@ -308,7 +308,7 @@ counts_summed %>%
         labs(y="", fill="", x="Proportion of all reads in study")
 
 
-ggsave("Fig3B_topSpecies.pdf", height=6, width=6, useDingbats=F)
+ggsave("Fig3B_topSpecies.pdf", height=6.7, width=6, useDingbats=F)
 
 ```
 

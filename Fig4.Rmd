@@ -120,7 +120,7 @@ for (i in 1:length(species_toPlot)) {
       )
 }
 
-pdf("Fig4B.pdf", height=60)
+pdf("Fig4B.pdf", height=80)
 egg::ggarrange(plots=ggplots, ncol=1)
 dev.off()
 
