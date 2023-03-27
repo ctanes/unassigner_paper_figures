@@ -41,7 +41,7 @@ data_dir <- "data/Fig3"
 ```{r}
 # Load unassigner and dada2 data
 unassigner <- read_delim(file.path(data_dir, "Fig3_unassigner_results.txt"),show_col_types = FALSE)
-dada2 <- read_delim(file.path(data_dir, "Fig3_dada2_results.txt"),show_col_types = FALSE)
+dada2 <- read_delim(file.path(data_dir, "Fig3_dada2_rdp18_results.txt"),show_col_types = FALSE)
 ```
 
 
