@@ -31,10 +31,10 @@ library(tidyverse)
 ```{r}
 ## read in full length alignment results
 
-### AJ288899 (extra) and MN602556 (missin) have messed up annotations
-adf_LTP <- read.delim("/Users/tanesc/Documents/DBs/LTP/LTP_09_2021/LTP_09_2021.csv", header=F, stringsAsFactors = F) %>%
-  separate(V4, into=c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep=";") %>%
-  select(id = V1, V3, Kingdom, Phylum, Class, Order, Family, Genus, Species=V2) 
+adf_LTP <- read.delim("/Users/tanesc/Documents/DBs/LTP/LTP_06_2022/LTP_06_2022.csv", header=F, stringsAsFactors = F) %>%
+  select(id=V1, V3, Species=V2) %>%
+  separate(V3, into=c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep=";") #%>%
+  #select(id = V1, V3, Kingdom, Phylum, Class, Order, Family, Genus, Species=V2) 
 
 database_counts_LTP <- adf_LTP %>%
   group_by(Phylum) %>%
@@ -84,7 +84,8 @@ temp <- unassigner %>%
   filter(mism <= 1) %>%
   group_by(region, Species.x, Species.y) %>% 
   slice(1) %>%
-  ungroup()
+  ungroup() %>%
+  filter(!is.na(Species.y))
 ```
 
 ```{r}
@@ -148,6 +149,28 @@ unassigner %>%
 
 
 ```{r}
+# What percentage of phyla are identical to something else using whole 16S gene
+unassigner %>%
+  filter(mism <= 1) %>%
+  group_by(query_id, region) %>%
+  slice(1) %>%
+  ungroup() %>%
+  
+  filter(region == "Whole 16S") %>%
+  
+  group_by(Phylum) %>%
+  summarize(num_identical = n()) %>%
+  ungroup() %>%
+  
+  left_join(database_counts_LTP, by="Phylum") %>%
+  
+  mutate(num_identical / num_species_total) %>%
+  
+  View()
+```
+
+
+```{r}
 unassigner %>%
   filter(mism <= 1) %>%
   group_by(query_id, region) %>%
@@ -162,7 +185,7 @@ unassigner %>%
   group_by(Phylum) %>%
   mutate(max_num_taxa = max(num_taxa)) %>%
   ungroup() %>%
-  filter(max_num_taxa > 50) %>%
+  filter(max_num_taxa > 100) %>%
   
   mutate(Phylum = reorder(Phylum, max_num_taxa)) %>%
   
