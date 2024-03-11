@@ -135,16 +135,22 @@ Full length 16S regions, extracted regions of V1-V2, V1-V3 and V4 from LTP were 
 
 
 ```{r}
+total_reads <- data_frame(region=c("Whole 16S", "V1-V3", "V1-V2", "V4"), total = c(18759, 18138, 18100, 18733))
+
 # Using the whole length gene, and V1-V3, V1-V2, and V4 regions, we identified XXX species that were indistinguishable from at least one other species
 unassigner %>%
   filter(mism <= 1) %>%
+  
   group_by(query_id, region) %>%
   slice(1) %>%
   ungroup() %>%
   
   group_by(region) %>%
-  summarize(n()) %>%
-  ungroup()
+  summarize(counts = n()) %>%
+  ungroup() %>%
+  
+  left_join(total_reads, by="region") %>%
+  mutate(perc = counts / total)
 ```
 
 
@@ -165,6 +171,27 @@ unassigner %>%
   left_join(database_counts_LTP, by="Phylum") %>%
   
   mutate(num_identical / num_species_total) %>%
+  
+  View()
+```
+
+
+```{r}
+genera_list_fig3b <- c("Alistipes", "Bacteroides", "Faecalibacterium", "Phocaeicola", 
+"Prevotella", "Corynebacterium", "Cutibacterium", "Dolosigranulum", 
+"Haemophilus", "Staphylococcus", "Bradyrhizobium", "Neisseria", 
+"Ralstonia", "Streptococcus", "Veillonella")
+
+unassigner %>%
+  filter(mism <= 1) %>%
+  filter(Genus %in% genera_list_fig3b) %>%
+  group_by(query_id, region) %>%
+  slice(1) %>%
+  ungroup() %>%
+  
+  group_by(region, Genus) %>%
+  summarize(num_identical = n()) %>%
+  ungroup() %>%
   
   View()
 ```

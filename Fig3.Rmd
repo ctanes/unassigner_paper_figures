@@ -51,7 +51,11 @@ counts <-
     bind_rows(
         read_delim(file.path(data_dir, "Feces_Fig3_count_data.txt"), show_col_types = FALSE),
         read_delim(file.path(data_dir, "Nasal_Fig3_count_data.txt"), show_col_types = FALSE),
-        read_delim(file.path(data_dir, "Oropharyngeal_Fig3_count_data.txt"), show_col_types = FALSE)
+        read_delim(file.path(data_dir, "Oropharyngeal_Fig3_count_data.txt"), show_col_types = FALSE),
+        read_delim(file.path(data_dir, "freshwater_sediment_Fig3_count_data.txt"), show_col_types = FALSE),
+        read_delim(file.path(data_dir, "marine_Fig3_count_data.txt"), show_col_types = FALSE),
+        read_delim(file.path(data_dir, "marine_sediment_Fig3_count_data.txt"), show_col_types = FALSE),
+        read_delim(file.path(data_dir, "soil_Fig3_count_data.txt"), show_col_types = FALSE)
     ) %>%
     left_join(dada2, by="query_id") %>%
     left_join(unassigner, by="query_id") %>%
@@ -65,7 +69,11 @@ counts <-
         unassigner_species != dada2_species ~ "Conflicting species labels")) %>%
     group_by(sample_type) %>%
     mutate(all_reads = sum(counts)) %>% # number of reads total for each sample type
-    ungroup()
+    ungroup() %>%
+  
+    mutate(sample_type = sub("freshwater", "Freshwater", sample_type)) %>%
+    mutate(sample_type = sub("marine", "Marine", sample_type)) %>%
+    mutate(sample_type = sub("soil", "Soil", sample_type))
 ```
 
 
@@ -104,6 +112,7 @@ counts_summed %>%
   group_by(sample_type, software_label, all_reads) %>%
   summarize(counts = sum(total_reads)) %>%
   ungroup() %>%
+  mutate(percentage = counts / all_reads) %>%
   pander(split.table=Inf)
 
 
@@ -162,6 +171,8 @@ setreuler_plot <- function (coordinates_data, radius = NULL, fill_colors = c("#F
 venn_coord <- counts_summed %>%
   filter(!is.na(software_label)) %>%
   filter(!software_label %in% "Conflicting species labels") %>%
+  filter(sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>%
+  droplevels() %>%
   group_by(sample_type, software_label, all_reads) %>%
   summarize(counts = sum(total_reads)) %>%
   ungroup() %>%
@@ -201,6 +212,54 @@ venn_coord %>%
 ggsave("Fig3A_Oropharyngeal.pdf", useDingbats=F, width=6)
 ```
 
+```{r}
+venn_coord <- counts_summed %>%
+  filter(!is.na(software_label)) %>%
+  filter(!software_label %in% "Conflicting species labels") %>%
+  filter(!sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>%
+  droplevels() %>%
+  group_by(sample_type, software_label, all_reads) %>%
+  summarize(counts = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(counts = round(counts / 1000)) %>%
+  select(-all_reads) %>%
+  mutate(start_fake = 1) %>%
+  group_by(sample_type, software_label) %>%
+  expand(start_fake, counts, hello = full_seq(start_fake:counts, 1)) %>% # from https://stackoverflow.com/questions/41471391/expanding-data-frame-using-tidyverse
+  select(-one_of(c("start_fake", "hello"))) %>%
+  mutate(set_unassigner = software_label %in% c("Both agree", "Unassigner only")) %>%
+  mutate(set_dada2 = software_label %in% c("Both agree", "DADA2 only")) %>%
+  group_by(sample_type) %>%
+  #summarize(setreuler_coordinates2(set_unassigner, set_dada2, offset = 65, widthA = 80, widthB=15)) %>%
+  #summarize(setreuler_coordinates(set_unassigner, set_dada2, offset = 30, width = 80)) %>%
+  summarize(setreuler_coordinates(set_unassigner, set_dada2, widthA = 17, offset = 7)) %>%
+  ungroup()
+
+venn_coord %>%
+  filter(sample_type == "Soil") %>%
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_Soil.pdf", useDingbats=F, width=6)
+
+
+venn_coord %>%
+  filter(sample_type == "Freshwater sediment") %>%
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_Freshwater_sediment.pdf", useDingbats=F, width=6)
+
+
+venn_coord %>%
+  filter(sample_type == "Marine") %>%
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_Marine.pdf", useDingbats=F, width=6)
+
+
+
+venn_coord %>%
+  filter(sample_type == "Marine sediment") %>%
+  setreuler_plot(radius = grid::unit(1, "mm"), fill_colors=c("#EEA382", "#647390"), alpha=0.6)
+ggsave("Fig3A_Marine_sediment.pdf", useDingbats=F, width=6)
+
+```
 
 ## Fig 3B
 
@@ -215,7 +274,8 @@ counts_summed %>%
   pander(split.table=Inf)
 
 ## number of unique ASVs
-counts %>% select(query_id, sample_type) %>% unique() %>% group_by(sample_type) %>% count()
+counts %>% filter(counts > 0) %>% select(query_id, sample_type) %>% unique() %>% group_by(sample_type) %>% count() %>%
+  pander()
 
 
 ## percent of species assigned with unassigner
@@ -224,7 +284,8 @@ counts_summed %>%
   group_by(sample_type, unassigner, all_reads) %>% 
   summarize(assigned = sum(total_reads)) %>%
   ungroup() %>%
-  mutate(perc_assigned = assigned/all_reads)
+  mutate(perc_assigned = assigned/all_reads) %>%
+  pander()
 
 ## percent of species assigned with dada2
 counts_summed %>% 
@@ -232,7 +293,8 @@ counts_summed %>%
   group_by(sample_type, dada2, all_reads) %>% 
   summarize(assigned = sum(total_reads)) %>%
   ungroup() %>%
-  mutate(perc_assigned = assigned/all_reads)
+  mutate(perc_assigned = assigned/all_reads) %>%
+  pander()
 
 ## number of reads that were conflicting
 counts_summed %>%
@@ -240,14 +302,16 @@ counts_summed %>%
   group_by(sample_type, all_reads) %>%
   summarize(conflicting = sum(total_reads)) %>%
   ungroup() %>%
-  mutate(perc_conflicting = conflicting / all_reads)
+  mutate(perc_conflicting = conflicting / all_reads) %>%
+  pander()
 
+## number of reads that were assigned with DADA2 only
 counts_summed %>%
   filter(software_label == "DADA2 only") %>%
   group_by(sample_type, all_reads) %>%
-  summarize(conflicting = sum(total_reads)) %>%
+  summarize(total_reads = sum(total_reads)) %>%
   ungroup() %>%
-  mutate(perc_conflicting = conflicting / all_reads)
+  mutate(perc_count = total_reads / all_reads)
 
 ```
 
@@ -271,6 +335,8 @@ counts %>%
   summarize(mean_ab = mean(perc_annotated), sd_ab = sd(perc_annotated)) 
 ```
 
+
+
 ```{r}
 # pick the species with the most number of reads assigned per sample type
 top_species <- counts_summed %>%
@@ -284,12 +350,16 @@ top_species <- counts_summed %>%
     filter(rank_species <= 10) %>%
     select(-total_species_reads)
 
+top_species %>% filter(sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>% separate(species_label, into=c("Genus", "Species")) %>% pull(Genus) %>% unique() %>% dput()
+
 counts_summed %>%
+    filter(sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>%
+    droplevels() %>%
     mutate(software_label = fct_rev(software_label)) %>%
     group_by(sample_type, species_label, software_label, all_reads) %>%
     summarize(total_species_reads = sum(total_reads)) %>%
     ungroup() %>%
-    right_join(top_species, by=c("sample_type", "species_label")) %>%
+    right_join(filter(top_species, sample_type %in% c("Feces", "Nasal", "Oropharyngeal")), by=c("sample_type", "species_label")) %>%
     mutate(species_proportion = total_species_reads / all_reads) %>%
     mutate(species_label = fct_reorder(species_label, -rank_species)) %>%
     ggplot(aes(y = species_label, x = species_proportion, fill = software_label)) +
@@ -310,6 +380,39 @@ counts_summed %>%
 
 ggsave("Fig3B_topSpecies.pdf", height=6.7, width=6, useDingbats=F)
 
+```
+
+
+
+```{r}
+counts_summed %>%
+    filter(!sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>%
+    droplevels() %>%
+    mutate(software_label = fct_rev(software_label)) %>%
+    group_by(sample_type, species_label, software_label, all_reads) %>%
+    summarize(total_species_reads = sum(total_reads)) %>%
+    ungroup() %>%
+    right_join(filter(top_species, !sample_type %in% c("Feces", "Nasal", "Oropharyngeal")), by=c("sample_type", "species_label")) %>%
+    mutate(species_proportion = total_species_reads / all_reads) %>%
+    mutate(species_label = paste(sample_type, species_label)) %>%
+    mutate(species_label = fct_reorder(species_label, -rank_species)) %>%
+    ggplot(aes(y = species_label, x = species_proportion, fill = software_label)) +
+        geom_col(width=0.8) +
+        scale_fill_manual(values = ann_colors$software_label) +
+        facet_grid(sample_type~., space="free", scales="free") +
+        scale_x_continuous(labels=scales:::percent, expand = c(0, 0), limits=c(0,0.1)) +
+        theme_bw() +
+        theme(
+            strip.background = element_blank(),
+            panel.grid.major.y = element_blank(),
+            legend.position = "bottom",
+            legend.direction = "horizontal"
+        ) +
+        guides(fill=guide_legend(ncol=2)) +
+        labs(y="", fill="", x="Proportion of all reads in study")
+
+
+ggsave("Fig3B_topSpecies_env.pdf", height=7.65, width=7, useDingbats=F)
 ```
 
 
@@ -372,6 +475,9 @@ temp %>%
     
     mutate(species_label = fct_relevel(species_label, "Other", after=0)) %>%
     
+    filter(sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>%
+    droplevels() %>% 
+  
     ggplot(aes(y = rank_sample, x = props, fill = species_label)) +
         geom_col() +
         facet_grid(sample_type~method, scales = "free_y", space="free") +
@@ -399,4 +505,40 @@ ggsave("Fig3C_exampleSamples.pdf", height=6, width=8, useDingbats=F)
 ```
 
 
-
+```{r}
+temp %>%
+    right_join(select(picked_samples, SampleID, rank_sample), by="SampleID") %>%
+    mutate(method = sub("_species", "", method)) %>%
+    mutate(method = factor(method, levels=c("unassigner", "dada2"), labels=c("Unassigner", "DADA2"))) %>%
+    
+    mutate(species_label = sub("Marine sediment", "Marine zediment", species_label)) %>%
+    mutate(species_label = fct_relevel(species_label, "Other", after=0)) %>%
+    
+    filter(!sample_type %in% c("Feces", "Nasal", "Oropharyngeal")) %>%
+    
+    ggplot(aes(y = rank_sample, x = props, fill = species_label)) +
+        geom_col() +
+        facet_grid(sample_type~method, scales = "free_y", space="free") +
+        scale_x_continuous(labels=scales:::percent, limits=c(0,1)) +
+        scale_fill_manual(values = c("#808080",
+                                     viridis(10, option="mako", direction=-1, begin=0.1),
+                                     viridis(10, option="rocket", direction=-1, begin=0.2),
+                                     viridis(10, option="plasma", direction=-1),
+                                     viridis(10, option="viridis", direction=-1)
+                                     )) +
+        theme_bw() +
+        theme(
+            strip.background = element_blank(),
+            panel.grid = element_blank(),
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank(),
+            legend.key.size = unit(0.4, 'cm')
+        ) +
+        coord_flip() +
+        guides(fill=guide_legend(ncol=1, reverse=F)) +
+        labs(
+            x="Relative abundance", 
+            fill="Species", y="Samples"
+            )
+ggsave("Fig3C_exampleSamples_env.pdf", height=7, width=8, useDingbats=F)
+```
