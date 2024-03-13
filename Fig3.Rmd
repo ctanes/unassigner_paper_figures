@@ -40,7 +40,10 @@ data_dir <- "data/Fig3"
 
 ```{r}
 # Load unassigner and dada2 data
-unassigner <- read_delim(file.path(data_dir, "Fig3_unassigner_results.txt"),show_col_types = FALSE)
+unassigner <- read_delim(file.path(data_dir, "Fig3_unassigner_results.txt"),show_col_types = FALSE) %>%
+  group_by(query_id, typestrain_id) %>%
+  slice(1) %>%
+  ungroup()
 dada2 <- read_delim(file.path(data_dir, "Fig3_dada2_rdp18_results.txt"),show_col_types = FALSE)
 ```
 
