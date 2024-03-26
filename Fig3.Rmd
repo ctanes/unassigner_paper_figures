@@ -40,10 +40,7 @@ data_dir <- "data/Fig3"
 
 ```{r}
 # Load unassigner and dada2 data
-unassigner <- read_delim(file.path(data_dir, "Fig3_unassigner_results.txt"),show_col_types = FALSE) %>%
-  group_by(query_id, typestrain_id) %>%
-  slice(1) %>%
-  ungroup()
+unassigner <- read_delim(file.path(data_dir, "Fig3_unassigner_results.txt"),show_col_types = FALSE) 
 dada2 <- read_delim(file.path(data_dir, "Fig3_dada2_rdp18_results.txt"),show_col_types = FALSE)
 ```
 
@@ -316,6 +313,15 @@ counts_summed %>%
   ungroup() %>%
   mutate(perc_count = total_reads / all_reads)
 
+
+## number of reads that were assigned with either software
+counts_summed %>%
+  filter(!is.na(software_label)) %>%
+  group_by(sample_type, all_reads) %>%
+  summarize(total_reads = sum(total_reads)) %>%
+  ungroup() %>%
+  mutate(perc_count = total_reads / all_reads)
+
 ```
 
 
@@ -335,7 +341,10 @@ counts %>%
   mutate(perc_annotated = num_annotated / reads_per_sample) %>%
   
   group_by(sample_type) %>%
-  summarize(mean_ab = mean(perc_annotated), sd_ab = sd(perc_annotated)) 
+  summarize(mean_ab = mean(perc_annotated), sd_ab = sd(perc_annotated)) %>%
+  ungroup() %>%
+  
+  mutate(perc = sd_ab / mean_ab)
 ```
 
 
@@ -504,7 +513,7 @@ temp %>%
             x="Relative abundance", 
             fill="Species", y="Samples"
             )
-ggsave("Fig3C_exampleSamples.pdf", height=6, width=8, useDingbats=F)
+ggsave("Fig3C_exampleSamples.pdf", height=6, width=8.2, useDingbats=F)
 ```
 
 

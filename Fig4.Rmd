@@ -31,7 +31,7 @@ library(tidyverse)
 ```{r}
 ## read in full length alignment results
 
-adf_LTP <- read.delim("/Users/tanesc/Documents/DBs/LTP/LTP_06_2022/LTP_06_2022.csv", header=F, stringsAsFactors = F) %>%
+adf_LTP <- read.delim("/Users/tanesc/Documents/DBs/LTP/LTP_08_2023/LTP_08_2023.csv", header=F, stringsAsFactors = F) %>%
   select(id=V1, V3, Species=V2) %>%
   separate(V3, into=c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep=";") #%>%
   #select(id = V1, V3, Kingdom, Phylum, Class, Order, Family, Genus, Species=V2) 
@@ -135,7 +135,7 @@ Full length 16S regions, extracted regions of V1-V2, V1-V3 and V4 from LTP were 
 
 
 ```{r}
-total_reads <- data_frame(region=c("Whole 16S", "V1-V3", "V1-V2", "V4"), total = c(18759, 18138, 18100, 18733))
+total_reads <- data_frame(region=c("Whole 16S", "V1-V3", "V1-V2", "V4"), total = c(19791, 19123, 19081, 19764))
 
 # Using the whole length gene, and V1-V3, V1-V2, and V4 regions, we identified XXX species that were indistinguishable from at least one other species
 unassigner %>%

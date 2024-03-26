@@ -1,5 +1,7 @@
 ---
-output: html_document
+title: "Untitled"
+output: pdf_document
+date: "2024-03-14"
 ---
 
 ## Setup
@@ -74,7 +76,23 @@ predictor_thresholds <- function (predictor_vals, pad = 0.1) {
 ```
 
 ```{r}
-data_dir <- "data/Fig2"
+data_dir <- "data/stackebrandt_curves"
+```
+
+
+```{r}
+selected_genomes <- c(
+"GCF_000012825.1",	"GCF_001688845.2",	"GCF_008728435.1",
+"GCF_000144405.1",	"GCF_003324185.1",	"GCF_009831375.1",
+"GCF_000148585.2",	"GCF_003697165.2",	"GCF_013009555.1",
+"GCF_000154465.1",	"GCF_004295125.1",	"GCF_014131755.1",
+"GCF_000157935.1",	"GCF_005221285.1",	"GCF_016117815.1",
+"GCF_000159115.1",	"GCF_005706655.1",	"GCF_016728365.1",
+"GCF_000164675.2",	"GCF_006364295.1",	"GCF_020736045.1",
+"GCF_000164695.2",	"GCF_006364675.1",	"GCF_900186885.1",
+"GCF_000175615.1",	"GCF_006742205.1",	"GCF_900460235.1",
+"GCF_000191405.1",	"GCF_008000975.1",	"GCF_900537995.1",
+"GCF_028743435.1",  "GCF_001639275.1",  "GCF_004799605.1") # Methanobrevibacter smithii, Methanobrevibacter oralis, Halobacterium salinarum
 ```
 
 ## Data import
@@ -88,17 +106,22 @@ assembly_cols <- cols(
   taxid = col_integer(),
   species_taxid = col_integer(),
   excluded_from_refseq = col_character())
-refseq_assemblies <- read_tsv(
-  file.path(data_dir, "refseq_bacteria_assembly_summary.txt"), col_types = assembly_cols, skip = 1,
+
+refseq_bacteria <- read_tsv(
+  file.path(data_dir, "refseq_bacteria_assembly_summary.txt"), col_types = assembly_cols, skip=1,
   quote="") %>%
-  rename(assembly_accession="# assembly_accession") %>%
-  mutate(assembly_level = fct_relevel(
-    assembly_level, "Complete Genome", "Chromosome", "Scaffold", "Contig"))
+  select(assembly_accession="#assembly_accession", organism_name, species_taxid) %>%
+  mutate(Kingdom = "Bacteria")
+
+
+refseq_archaea <- read_tsv(file.path("/Users/tanesc/Documents/unassigner/unassigner_paper_figures/data/stackebrandt_curves/refseq_archaea_assembly_summary.txt"), col_types = assembly_cols, skip=1,
+  quote="") %>%
+  select(assembly_accession="#assembly_accession", organism_name, species_taxid) %>%
+  mutate(Kingdom = "Archaea")
 ```
 
 ```{r}
-refseq_species <- refseq_assemblies %>%
-  select(assembly_accession, organism_name, species_taxid) %>%
+refseq_species <- bind_rows(refseq_bacteria, refseq_archaea) %>%
   mutate(assembly_label = str_replace(
     organism_name, "^(\\S+) (\\S+) ", "\\1 \\2\n")) %>%
   mutate(assembly_label = str_remove(assembly_label, " = .+$")) %>%
@@ -106,36 +129,113 @@ refseq_species <- refseq_assemblies %>%
     organism_name, "^(\\S+ \\S+) .+$", "\\1"))
 ```
 
+
+
 ```{r}
-species_ani_thresholds <- read_csv(file.path(data_dir, "species_ani_thresholds.csv"))
+species_ani_thresholds <- read_csv(file.path(data_dir, "../Fig2/species_ani_thresholds.csv"))
 ```
 
 ```{r}
-b <- tibble(fp=list.files(file.path(data_dir, "fastani_data/"), full.names = T)) %>%
+b <- tibble(fp=list.files(file.path(data_dir, "output/"), full.names = T)) %>%
+  rowwise() %>%
+  mutate(fileSize = file.info(fp)$size) %>%
+  ungroup() %>%
+  filter(fileSize > 150) %>% # delete empty files
   rowwise() %>%
   do(read_tsv(.$fp, show_col_types = F)) %>%
   ungroup() %>%
   group_by(query_assembly, subject_assembly) %>%
   slice(which.max(pctid)) %>%
-  ungroup()
+  ungroup() %>%
+  filter(!is.na(ani))
 ```
 
 ```{r}
 b %>%
-  write_csv("unassigner_dataS1.csv")
+  write_csv("unassigner_dataS1_all.csv")
+```
+
+```{r}
+b <- read_delim("unassigner_dataS1_all.csv")
 ```
 
 
 ```{r}
-b %>%
-  count(query_assembly, subject_assembly) %>%
-  filter(n > 1)
+a <- tibble(fp=list.files(file.path(data_dir, "output_archaea/"), full.names = T)) %>%
+  rowwise() %>%
+  mutate(fileSize = file.info(fp)$size) %>%
+  ungroup() %>%
+  filter(fileSize > 150) %>% # delete empty files
+  rowwise() %>%
+  do(read_tsv(.$fp, show_col_types = F)) %>%
+  ungroup() %>%
+  group_by(query_assembly, subject_assembly) %>%
+  slice(which.max(pctid)) %>%
+  ungroup() %>%
+  filter(!is.na(ani))
 ```
+
 
 ## ANI quality
 
 ```{r}
 b %>%
+  filter(query_assembly %in% selected_genomes) %>%
+  ggplot() +
+  geom_point(aes(x=fragments_aligned, y = ani)) +
+  theme_bw()
+```
+
+```{r}
+a %>%
+  ggplot() +
+  geom_point(aes(x=fragments_aligned, y = ani)) +
+  theme_bw()
+```
+
+
+```{r}
+b %>%
+  mutate(fragment_intervals = findInterval(fragments_aligned, seq(0, 4200, 10))) %>%
+  mutate(FI = (fragment_intervals-1)*10 + 0) %>%
+  
+  mutate(ani_intervals = findInterval(ani, seq(0, 100, 2))) %>%
+  mutate(AI = (ani_intervals-1)*2 + 0) %>%
+  
+  group_by(FI, AI) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  
+  ggplot(aes(x=FI, y=AI, fill=count)) +
+  geom_tile() +
+  viridis:::scale_fill_viridis(trans="log10") +
+  theme_bw()
+```
+
+
+
+```{r}
+a %>%
+  mutate(fragment_intervals = findInterval(fragments_aligned, seq(0, 4200, 10))) %>%
+  mutate(FI = (fragment_intervals-1)*10 + 0) %>%
+  
+  mutate(ani_intervals = findInterval(ani, seq(0, 100, 2))) %>%
+  mutate(AI = (ani_intervals-1)*2 + 0) %>%
+  
+  group_by(FI, AI) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  
+  ggplot(aes(x=FI, y=AI, fill=count)) +
+  geom_tile() +
+  viridis:::scale_fill_viridis(trans="log10") +
+  theme_bw()
+```
+
+```{r}
+b %>%
+  filter(query_assembly %in% selected_genomes) %>%
+  filter(fragments_aligned < 100) %>%
   ggplot() +
   geom_point(aes(x=fragments_aligned, y = ani)) +
   theme_bw()
@@ -148,37 +248,64 @@ b %>%
   geom_point(aes(x=fragments_aligned, y = ani)) +
   theme_bw()
 ```
+```{r}
+a %>%
+  filter(fragments_aligned < 100) %>%
+  ggplot() +
+  geom_point(aes(x=fragments_aligned, y = ani)) +
+  theme_bw()
+```
+
 
 ```{r}
-b %>%
+ani_fit <- b %>%
   filter(fragments_aligned > 50, fragments_aligned < 100) %>%
   lm(ani ~ 1, data=.) %>%
   summary()
+ani_fit
 ```
 
 
-```{r}
+```{r eval=F}
 b <- b %>%
   mutate(ani = ifelse(
-    (fragments_aligned < 25) | is.na(ani), rnorm(n(), 78.62, 1.32), ani))
+    (fragments_aligned < 25) | is.na(ani), rnorm(n(), ani_fit$coefficients[1,"Estimate"], ani_fit$coefficients[1,"Std. Error"]*(sqrt(ani_fit$df[2]+1))), ani))
 ```
+
+
+
+
+
+
+
 
 ```{r}
 b_cts <- b %>%
   count(query_assembly, sort=T) %>%
   left_join(refseq_species, by=c(query_assembly="assembly_accession")) %>%
   mutate(species = fct_reorder(species, n)) %>%
-  select(species, accession=query_assembly, n)
+  select(species, accession=query_assembly, n) 
 b_cts
 ```
 
 ```{r}
 b_cts %>%
+  filter(accession %in% selected_genomes) %>%
   ggplot() +
   geom_col(aes(x=n, y=species)) +
   #scale_x_sqrt(breaks = c(1e2, 5e2, 1e3, 5e3, 1e4, 5e4)) +
   labs(y="", x="Number of RefSeq genomes assessed in RefSeq") +
   theme_bw()
+```
+
+
+```{r}
+a_cts <- a %>%
+  count(query_assembly, sort=T) %>%
+  left_join(refseq_species, by=c(query_assembly="assembly_accession")) %>%
+  mutate(species = fct_reorder(species, n)) %>%
+  select(species, accession=query_assembly, n) 
+a_cts
 ```
 
 ## Stackebrandt curves
@@ -189,7 +316,11 @@ pctid_labels <- glue::glue("{sprintf(\"%3.1f\", pctid_breaks)}%")
 ani_breaks <- seq(80, 100, by=5)
 ani_labels <- glue::glue("{sprintf(\"%3.0f\", ani_breaks)}%")
 
-b %>%
+bind_rows(b %>% filter(query_assembly %in% selected_genomes),
+          a %>% filter(query_assembly %in% selected_genomes)) %>%
+
+#a %>% filter(query_assembly %in% filter(a_cts, n<60 & n>=55)$accession) %>%
+  filter(fragments_aligned>50) %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
   rename(
     query_name = organism_name, query_taxid = species_taxid,
@@ -199,18 +330,22 @@ b %>%
     subject_name = organism_name, subject_taxid = species_taxid,
     subject_label = assembly_label, subject_species = species) %>%
   mutate(same_species = query_taxid == subject_taxid) %>%
+  filter(!is.na(same_species)) %>%
   left_join(species_ani_thresholds, by=c(query_assembly="assembly_accession")) %>%
-  mutate(query_species_label = str_replace(query_species, " ", "\n")) %>%
+  mutate(query_species = factor(query_species)) %>%
+  mutate(query_species = fct_relevel(query_species, "Methanobrevibacter smithii", "Methanobrevibacter oralis", "Halobacterium salinarum", after=Inf)) %>%
+  mutate(query_species = fct_relabel(query_species, function(x) sub(" ", "\n", x))) %>%
+  
   ggplot(aes(y=pctid, x=ani, color=same_species)) +
   geom_point(size = 0.7) +
   geom_vline(aes(xintercept = ani_threshold), linetype = "dashed", color = "#999999") +
   scale_y_continuous(breaks = pctid_breaks, labels = pctid_labels) +
   scale_x_continuous(breaks = ani_breaks, labels = ani_labels) +
-  facet_wrap(~ query_species_label, ncol = 3) +
+  facet_wrap(~ query_species, ncol = 5) +
   ggsci::scale_color_d3() +
   labs(
     x = "Full genome average nucleotide identity",
-    y = "16S rRNA gene similarity",
+    y = "16S rRNA gene identity",
     color = "Marked as\nsame species\nin RefSeq") +
   theme_bw() +
   theme(
@@ -218,7 +353,7 @@ b %>%
     strip.text.x = element_text(vjust=1),
     panel.spacing = grid::unit(1, "lines"))
 #ggsave("species_stackebrandt_curves.pdf", width = 8, height = 14, useDingbats = F)
-ggsave("unassigner_figS1.pdf", width = 8, height = 14, useDingbats = F)
+ggsave("unassigner_figS1.pdf", width = 12, height = 12, useDingbats = F)
 ```
 
 ```{r}
@@ -250,10 +385,14 @@ ggsave("cutibacterium_acnes_curve.png", width = 4, height = 2.5, dpi=300)
 ```
 
 ```{r}
-fig2a_species <- c(
-  "Prevotella copri", "Cutibacterium acnes", "Streptococcus mitis")
+fig2a_species_names <- c(
+  "Segatella copri", "Cutibacterium acnes", "Streptococcus mitis", "Methanobrevibacter smithii")
 
-b %>%
+fig2a_species <- c("GCF_000157935.1",  "GCF_008728435.1", "GCF_000148585.2", "GCF_028743435.1")
+
+bind_rows(b %>% filter(query_assembly %in% fig2a_species),
+          a %>% filter(query_assembly %in% fig2a_species)) %>%
+  filter(fragments_aligned>50) %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
   rename(
     query_name = organism_name, query_taxid = species_taxid,
@@ -264,8 +403,7 @@ b %>%
     subject_label = assembly_label, subject_species = species) %>%
   mutate(same_species = query_taxid == subject_taxid) %>%
   left_join(species_ani_thresholds, by=c(query_assembly="assembly_accession")) %>%
-  filter(query_species %in% fig2a_species) %>%
-  mutate(query_species = fct_relevel(query_species, fig2a_species)) %>%
+  mutate(query_species = fct_relevel(query_species, fig2a_species_names)) %>%
   mutate(ani_label = case_when(
     ani > ani_threshold ~ "Same species by ANI",
     TRUE ~ "Different species by ANI")) %>%
@@ -275,10 +413,10 @@ b %>%
   scale_y_continuous(breaks = pctid_breaks, labels = pctid_labels) +
   scale_x_continuous(breaks = ani_breaks, labels = ani_labels) +
   scale_color_manual(values = c("#1F77B4", "#FF7F0E"), guide = "none") +
-  facet_wrap(~ query_species, ncol = 3) +
+  facet_wrap(~ query_species, ncol = 4) +
   labs(
     x = "Whole-genome average nucleotide identity (ANI)",
-    y = "16S rRNA\ngene similarity") +
+    y = "16S rRNA\ngene identity") +
   theme_bw() +
   coord_equal() +
   theme(
@@ -294,28 +432,38 @@ ggsave("unassigner_fig2a.pdf", width = 9.5, height = 3, useDingbats = F)
 
 Evaluate the hard threshold algorithm for each species.
 
-```{r fig.width = 6, fig.height = 12}
-b %>%
+```{r fig.width = 10, fig.height = 12}
+bind_rows(b %>% filter(query_assembly %in% selected_genomes),
+          a %>% filter(query_assembly %in% selected_genomes)) %>%
+  filter(fragments_aligned>50) %>%
+  filter(query_assembly %in% selected_genomes) %>%
   left_join(species_ani_thresholds, by=c(query_assembly="assembly_accession")) %>%
   filter(ani >= ani_threshold) %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
   rename(
     query_name = organism_name, query_taxid = species_taxid,
     query_label = assembly_label, query_species = species) %>%
+  mutate(query_species = factor(query_species)) %>%
+  mutate(query_species = fct_relevel(query_species, "Methanobrevibacter smithii", "Methanobrevibacter oralis", "Halobacterium salinarum", after=Inf)) %>%
+  mutate(query_species = fct_relabel(query_species, function(x) sub(" ", "\n", x))) %>%
   ggplot() +
   geom_histogram(aes(x=pctid), binwidth = 0.5, boundary = 90.0) +
   geom_vline(xintercept = 97.5, linetype = "dashed", color = "#999999") +
-  facet_wrap(~ query_label, ncol = 3, scales = "free_y") +
+  facet_wrap(~ query_species, ncol = 5, scales = "free_y") +
   theme_bw() +
   theme(
     strip.background = element_blank(),
     strip.text.x = element_text(vjust=1),
     panel.spacing = grid::unit(1, "lines"))
-ggsave("species_anipos_16S.pdf", width = 6, height = 12, useDingbats = FALSE)
+ggsave("species_anipos_16S.pdf", width = 10, height = 12, useDingbats = FALSE)
 ```
 
+
+
 ```{r}
-b %>%
+bind_rows(b %>% filter(query_assembly %in% selected_genomes),
+          a %>% filter(query_assembly %in% selected_genomes)) %>%
+  filter(fragments_aligned>50) %>%
   left_join(species_ani_thresholds, by=c(query_assembly="assembly_accession")) %>%
   filter(ani >= ani_threshold) %>%
   group_by(query_assembly) %>%
@@ -329,17 +477,79 @@ b %>%
   geom_point(aes(x = pctpos, y = query_species, color="a")) +
   scale_color_manual(values = c("#1F77B4"), guide = "none") +
   labs(
-    x="Whole-genome ANI-based true positive rate\nfor 16S rRNA gene similarity threshold of 97.5%",
+    x="Whole-genome ANI-based true positive rate\nfor 16S rRNA gene identity threshold of 97.5%",
     y="") +
   scale_x_continuous(labels = scales::percent) +
   theme_bw() +
   theme(axis.title.x = element_text(hjust = 1.0), plot.margin = unit(c(2, 5, 2, 2), "mm"))
-ggsave("unassigner_fig2b.pdf", height = 4, width = 5, useDingbats = FALSE)
+ggsave("unassigner_fig2b.pdf", height = 4.5, width = 5, useDingbats = FALSE)
 ```
 
 
 ```{r}
-b_confusion <- b %>%
+tp_rate_all <- bind_rows(b %>% mutate(Kingdom="Bacteria"),
+                         a %>% mutate(Kingdom="Archaea")) %>%
+  filter(fragments_aligned>50) %>%
+  filter(ani >= 95) %>%
+  group_by(query_assembly, Kingdom) %>%
+  summarise(pctpos = mean(pctid >= 97.5), .groups = "drop") 
+
+tp_rate_all %>%
+  ggplot(aes(x=pctpos)) +
+    geom_histogram() +
+    scale_x_continuous(labels = scales::percent) +
+    facet_wrap(~Kingdom, scales="free") +
+    theme_bw() +
+    theme(
+      strip.background = element_blank(),
+      aspect.ratio=1
+    ) +
+    #theme(axis.title.x = element_text(hjust = 1.0), plot.margin = unit(c(2, 5, 2, 2), "mm")) +
+    labs(
+      x="Whole-genome ANI-based true positive rate\nfor 16S rRNA gene identity threshold of 97.5%",
+      y="Number of genomes")
+ggsave("unassigner_figS3.pdf", height = 3, width = 6, useDingbats = FALSE)
+```
+
+```{r}
+tp_rate_all %>%
+  group_by(Kingdom) %>%
+  summarize(percent_95 = mean(pctpos > 0.95)) %>%
+  ungroup()
+```
+
+
+```{r}
+fn_rate_all <- bind_rows(b %>% mutate(Kingdom="Bacteria"),
+                         a %>% mutate(Kingdom="Archaea")) %>%
+  filter(fragments_aligned>50) %>%
+  filter(ani >= 95) %>%
+  group_by(query_assembly, Kingdom) %>%
+  summarise(pctpos = mean(pctid <= 97.5), .groups = "drop") 
+
+tp_rate_all %>%
+  ggplot(aes(x=pctpos)) +
+    geom_histogram() +
+    scale_x_continuous(labels = scales::percent) +
+    facet_wrap(~Kingdom, scales="free") +
+    theme_bw() +
+    theme(
+      strip.background = element_blank(),
+      aspect.ratio=1
+    ) +
+    #theme(axis.title.x = element_text(hjust = 1.0), plot.margin = unit(c(2, 5, 2, 2), "mm")) +
+    labs(
+      x="Whole-genome ANI-based true positive rate\nfor 16S rRNA gene identity threshold of 97.5%",
+      y="Number of genomes")
+ggsave("unassigner_figS3.pdf", height = 3, width = 6, useDingbats = FALSE)
+```
+
+
+
+```{r}
+b_confusion <- bind_rows(b %>% filter(query_assembly %in% selected_genomes),
+                         a %>% filter(query_assembly %in% selected_genomes)) %>%
+  filter(fragments_aligned>50) %>%
   left_join(species_ani_thresholds, by=c(query_assembly="assembly_accession")) %>%
   group_by(query_assembly) %>%
   summarise(
@@ -355,7 +565,7 @@ rate_labels <- tibble(
     "Positive predictive value", "Negative predictive value"))
 ```
 
-```{r fig.width = 8, fig.height = 13}
+```{r fig.width = 10, fig.height = 12}
 b_confusion %>%
   arrange(pred_thresh) %>%
   filter(pred_thresh <= 100.0) %>%
@@ -364,11 +574,16 @@ b_confusion %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
   left_join(species_ani_thresholds, by=c(query_assembly="assembly_accession")) %>%
   left_join(rate_labels, by=c(name="short_name")) %>%
-  mutate(species_label = str_replace(species_label, " ", "\n")) %>%
+  
+  mutate(species_label = factor(species_label)) %>%
+  mutate(species_label = fct_relevel(species_label, "Methanobrevibacter smithii", "Methanobrevibacter oralis", "Halobacterium salinarum", after=Inf)) %>%
+  mutate(species_label = fct_relabel(species_label, function(x) sub(" ", "\n", x))) %>%
+  
+  
   ggplot(aes(x=pred_thresh, y=value, color=long_name)) +
   geom_step(direction="vh") +
   geom_vline(xintercept = 97.5, linetype = "dashed", color = "#999999") +
-  facet_wrap(~ species_label, ncol=3) +
+  facet_wrap(~ species_label, ncol=5) +
   ggsci::scale_color_jama() +
   scale_y_continuous(breaks = c(0, 0.5, 1.0)) +
   scale_x_continuous(limits = c(90, 100)) +
@@ -381,8 +596,8 @@ b_confusion %>%
     strip.background = element_blank(),
     strip.text.x = element_text(vjust=1),
     panel.spacing = grid::unit(1, "lines"))
-ggsave("species_tpr_tnr.pdf", width = 8, height = 13, useDingbats = F)
-ggsave("unassigner_figS2.pdf", width = 8, height = 13, useDingbats = F)
+#ggsave("species_tpr_tnr.pdf", width = 8, height = 13, useDingbats = F)
+ggsave("unassigner_figS2a.pdf", width = 10, height = 12, useDingbats = F)
 ```
 
 
@@ -429,14 +644,14 @@ ggsave("species_accuracy.pdf", width = 8, height = 8, useDingbats = F)
 ```{r fig.width = 8, fig.height = 8}
 b_confusion %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
-  rename(query_name = organism_name, query_taxid = species_taxid) %>%
-  mutate(query_name = str_replace(query_name, "^(\\S+) (\\S+) ", "\\1 \\2\n")) %>%
-  mutate(query_name = str_remove(query_name, " = .+$")) %>%
+  mutate(species = factor(species)) %>%
+  mutate(species = fct_relevel(species, "Methanobrevibacter smithii", "Methanobrevibacter oralis", "Halobacterium salinarum", after=Inf)) %>%
+  mutate(species = fct_relabel(species, function(x) sub(" ", "\n", x))) %>%
   arrange(fpr, tpr) %>%
   ggplot(aes(x=fpr, y=tpr)) +
   geom_step(direction = "hv") +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "#999999") +
-  facet_wrap(~ query_name, ncol=3) +
+  facet_wrap(~ species, ncol=5) +
   theme_bw() +
   theme(
     strip.background = element_blank(),
@@ -456,15 +671,24 @@ auc_tibble <- function(...) {
     auc = as.numeric(rocobj$auc),
     ci_lower = ci_res[1], ci_med = ci_res[2], ci_upper = ci_res[3])
 }
-b_auc <- b %>%
+
+b_auc <- bind_rows(b %>% mutate(Kingdom = "Bacteria"),
+                   a %>% mutate(Kingdom = "Archaea")) %>%
+  filter(fragments_aligned>50) %>%
   mutate(same_species = ani >= 95) %>%
   group_by(query_assembly) %>%
+  mutate(num_same_species = sum(same_species), num_diff_species = sum(ani<95)) %>%
+  ungroup() %>% 
+  filter(num_same_species > 0) %>%
+  filter(num_diff_species > 0) %>%
+  group_by(query_assembly, Kingdom) %>%
   summarise(auc_tibble(same_species ~ pctid, direction = "<", levels = c(F, T))) %>%
   ungroup()
 ```
 
 ```{r}
 b_auc %>%
+  filter(query_assembly %in% selected_genomes) %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
   rename(query_name = organism_name, query_taxid = species_taxid) %>%
   mutate(query_name = str_replace(query_name, "^(\\S+ \\S+) .+$", "\\1")) %>%
@@ -475,9 +699,37 @@ b_auc %>%
   scale_x_continuous(limits = c(0.45, 1), breaks = seq(0.5, 1, 0.1)) +
   labs(x="AUC", y = "") + 
   theme_bw()
-ggsave("species_auc.pdf", width = 5, height = 2.6, useDingbats = F)
-ggsave("unassigner_figS3.pdf", width = 6, height = 4, useDingbats = F)
+ggsave("unassigner_figS2b.pdf", width = 6, height = 4, useDingbats = F)
 ```
+
+```{r}
+b_auc %>%
+  ggplot(aes(x=auc)) +
+    geom_histogram() +
+    facet_wrap(~Kingdom, scales="free") +
+    #scale_y_continuous(trans="log10") +
+    scale_x_continuous(breaks = c(0,0.2,0.4,0.6,0.8,1)) +
+    theme_bw() +
+    theme(
+      strip.background = element_blank(),
+      aspect.ratio=1
+    ) +
+    #theme(axis.title.x = element_text(hjust = 1.0), plot.margin = unit(c(2, 5, 2, 2), "mm")) +
+    labs(
+      x="AUC",
+      y="Number of genomes")
+ggsave("unassigner_figS2c.pdf", height = 3, width = 6, useDingbats = FALSE)
+    
+```
+
+
+```{r}
+b_auc %>%
+  group_by(Kingdom) %>%
+  summarize(auc_80 = mean(auc > 0.8), auc_90 = mean(auc > 0.9)) %>%
+  ungroup()
+```
+
 
 ## Soft threshold algorithm
 
@@ -489,7 +741,9 @@ ksmooth_tibble <- function (x, y, ...) {
   tibble(x= res$x, y = res$y)
 }
 
-b_soft <- b %>%
+b_soft <- bind_rows(b %>% filter(query_assembly %in% selected_genomes),
+                    a %>% filter(query_assembly %in% selected_genomes)) %>%
+  filter(fragments_aligned>50) %>%
   mutate(same_species = as.numeric(ani >= 95)) %>%
   group_by(query_assembly) %>%
   summarise(
@@ -507,16 +761,19 @@ decay99 <- tibble(pctid = seq(90, 100, 0.1)) %>%
   mutate(pctdiff = 100 - pctid) %>%
   mutate(p_soft= exp(-pctdiff / 0.9))
 b_soft %>%
+  filter(query_assembly %in% selected_genomes) %>%
   filter(!is.na(p_same_species)) %>%
   left_join(refseq_species, by = c(query_assembly = "assembly_accession")) %>%
-  rename(query_name = organism_name, query_taxid = species_taxid) %>%
-  mutate(query_name = str_replace(query_name, "^(\\S+ \\S+) .+$", "\\1")) %>%
+  mutate(species = factor(species)) %>%
+  mutate(species = fct_relevel(species, "Methanobrevibacter smithii", "Methanobrevibacter oralis", "Halobacterium salinarum", after=Inf)) %>%
+  mutate(species = fct_relabel(species, function(x) sub(" ", "\n", x))) %>%
+  
   arrange(query_assembly, pctid) %>%
   ggplot(aes(x=pctid, y=p_same_species)) +
   geom_point(size=0.5) +
   geom_line(aes(x=pctid, y=p_soft), data=decay99, color="#999999") +
   #geom_vline(xintercept = 97.5, linetype="dashed", color="#999999") +
-  facet_wrap(~ query_name, ncol=3) +
+  facet_wrap(~ species, ncol=5) +
   theme_bw() +
   theme(
     strip.background = element_blank(),
