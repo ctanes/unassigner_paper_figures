@@ -76,7 +76,7 @@ predictor_thresholds <- function (predictor_vals, pad = 0.1) {
 ```
 
 ```{r}
-data_dir <- "data/stackebrandt_curves"
+data_dir <- "data/Fig2"
 ```
 
 
@@ -114,7 +114,8 @@ refseq_bacteria <- read_tsv(
   mutate(Kingdom = "Bacteria")
 
 
-refseq_archaea <- read_tsv(file.path("/Users/tanesc/Documents/unassigner/unassigner_paper_figures/data/stackebrandt_curves/refseq_archaea_assembly_summary.txt"), col_types = assembly_cols, skip=1,
+refseq_archaea <- read_tsv(
+  file.path(data_dir, "refseq_archaea_assembly_summary.txt"), col_types = assembly_cols, skip=1,
   quote="") %>%
   select(assembly_accession="#assembly_accession", organism_name, species_taxid) %>%
   mutate(Kingdom = "Archaea")
@@ -136,7 +137,7 @@ species_ani_thresholds <- read_csv(file.path(data_dir, "../Fig2/species_ani_thre
 ```
 
 ```{r}
-b <- tibble(fp=list.files(file.path(data_dir, "output/"), full.names = T)) %>%
+b <- tibble(fp=list.files(file.path(data_dir, "output_bacteria/"), full.names = T)) %>%
   rowwise() %>%
   mutate(fileSize = file.info(fp)$size) %>%
   ungroup() %>%
