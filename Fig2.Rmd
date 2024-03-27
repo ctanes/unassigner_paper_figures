@@ -133,7 +133,7 @@ refseq_species <- bind_rows(refseq_bacteria, refseq_archaea) %>%
 
 
 ```{r}
-species_ani_thresholds <- read_csv(file.path(data_dir, "../Fig2/species_ani_thresholds.csv"))
+species_ani_thresholds <- read_csv(file.path(data_dir, "species_ani_thresholds.csv"))
 ```
 
 ```{r}
@@ -153,11 +153,11 @@ b <- tibble(fp=list.files(file.path(data_dir, "output_bacteria/"), full.names = 
 
 ```{r}
 b %>%
-  write_csv("unassigner_dataS1_all.csv")
+  write_csv(file.path(data_dir, "unassigner_dataS1_all_bacteria.csv"))
 ```
 
 ```{r}
-b <- read_delim("unassigner_dataS1_all.csv")
+b <- read_delim(file.path(data_dir, "unassigner_dataS1_all_bacteria.csv"))
 ```
 
 
@@ -176,6 +176,14 @@ a <- tibble(fp=list.files(file.path(data_dir, "output_archaea/"), full.names = T
   filter(!is.na(ani))
 ```
 
+```{r eval=F}
+a %>%
+  write_csv(file.path(data_dir, "unassigner_dataS1_all_archaea.csv"))
+```
+
+```{r}
+a <- read_delim(file.path(data_dir, "unassigner_dataS1_all_archaea.csv"))
+```
 
 ## ANI quality
 
@@ -249,6 +257,8 @@ b %>%
   geom_point(aes(x=fragments_aligned, y = ani)) +
   theme_bw()
 ```
+
+
 ```{r}
 a %>%
   filter(fragments_aligned < 100) %>%
